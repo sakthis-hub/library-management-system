@@ -1,0 +1,349 @@
+<!DOCTYPE html>git
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Library Management System</title>
+  <style>
+:root { --ink:#16302b; --paper:#f2f4f3; --brass:#b9852b; --line:#d6dcd9; --bad:#b3372f; --ok:#1a954f; }
+* { box-sizing: border-box; }
+body { margin:0; font:15px/1.5 "Segoe UI", system-ui, sans-serif; background:var(--paper); color:#1c2321; }
+.hidden { display:none !important; }
+h1,h2,h3 { font-family: Georgia, serif; font-weight:600; }
+label { display:block; margin-bottom:14px; font-weight:600; }
+input, select { display:block; width:100%; margin-top:5px; padding:9px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; }
+input:focus, select:focus, button:focus-visible { outline:2px solid var(--brass); outline-offset:1px; }
+button { padding:10px 16px; border:0; border-radius:6px; background:var(--ink); color:#fff; font:inherit; cursor:pointer; }
+button:hover { background:#21463f; }
+
+.login { min-height:100vh; display:grid; place-items:center; background:var(--ink); padding:20px; }
+.login-card { width:100%; max-width:380px; background:#fff; padding:32px; border-radius:10px; }
+.login-card h1 { margin:0 0 4px; font-size:26px; }
+.login-card p { margin:0 0 20px; color:#5b6662; }
+.login-card button { width:100%; }
+.error { color:var(--bad); min-height:20px; margin:12px 0 0 !important; }
+
+.app { display:flex; min-height:100vh; }
+aside { width:230px; background:var(--ink); color:#fff; padding:22px 14px; display:flex; flex-direction:column; }
+.brand { font:600 24px Georgia, serif; padding:0 10px 18px; }
+nav { flex:1; }
+nav button { display:block; width:100%; text-align:left; background:none; color:#cfdcd8; margin-bottom:2px; }
+nav button:hover { background:#21463f; }
+nav button.on { background:var(--brass); color:#fff; }
+.who { padding:10px; font-size:13px; color:#a9bcb6; }
+#logout { background:#0e211d; }
+main { flex:1; padding:28px 34px; min-width:0; }
+main h2 { margin:0 0 18px; font-size:28px; }
+
+.tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:14px; margin-bottom:26px; }
+.tile { background:#fff; border:1px solid var(--line); border-left:4px solid var(--brass); border-radius:6px; padding:14px 16px; }
+.tile b { display:block; font:600 30px Georgia, serif; }
+.tile span { color:#5b6662; }
+.tile.warn { border-left-color:var(--bad); }
+
+.card { max-width:460px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:22px; }
+table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); }
+th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--line); }
+th { background:#e8ece9; font-weight:600; }
+.table-wrap { overflow-x:auto; }
+.search { max-width:460px; margin-bottom:16px; }
+.small { padding:5px 12px; }
+.tag { padding:2px 8px; border-radius:10px; font-size:12px; color:#fff; background:var(--ok); }
+.tag.bad { background:var(--bad); }
+.note { padding:10px 14px; border-radius:6px; margin-bottom:16px; border:1px solid; }
+.note.ok { background:#e6f3ea; border-color:var(--ok); color:var(--ok); }
+.note.bad { background:#f9e9e7; border-color:var(--bad); color:var(--bad); }
+.empty { color:#5b6662; }
+
+@media (max-width:760px) {
+  .app { flex-direction:column; }
+  aside { width:100%; }
+  nav { display:flex; flex-wrap:wrap; gap:4px; }
+  nav button { width:auto; }
+  main { padding:20px 16px; }
+}
+
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.hint { font-size:13px; color:#5b6662; margin:14px 0 0 !important; line-height:1.6; }
+</style>
+</head>
+<body>
+  <section id="login-view" class="login">
+    <form id="login-form" class="login-card">
+      <h1>Library Management</h1>
+      <p>Log in to continue</p>
+      <label>Username <input name="username" required autocomplete="username"></label>
+      <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+      <label>User type
+        <select name="role">
+          <option value="student">Student</option>
+          <option value="librarian">Librarian</option>
+          <option value="member">Member</option>
+        </select>
+      </label>
+      <button>Log in</button>
+      <p class="hint">Demo logins (type must match):<br>admin / admin123 &middot; Librarian<br>asha / asha123 &middot; Student<br>karthik / karthik123 &middot; Member</p>
+      <p id="login-error" class="error"></p>
+    </form>
+  </section>
+
+  <div id="app-view" class="app hidden">
+    <aside>
+      <div class="brand">Library</div>
+      <nav id="nav"></nav>
+      <div class="who" id="who"></div>
+      <button id="logout">Log out</button>
+    </aside>
+    <main>
+      <h2 id="title"></h2>
+      <div id="msg"></div>
+      <div id="page"></div>
+    </main>
+  </div>
+  <script>
+// ---- Demo backend: replaces the Flask/MySQL API with browser storage ----
+const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const KEY = "lms-demo-v1";
+let S = null, sess = null;
+try { S = JSON.parse(localStorage.getItem(KEY)); sess = JSON.parse(sessionStorage.getItem("lms-sess")); } catch (e) {}
+if (!S) {
+  const bk = (id, title, author, isbn, category, total, avail) => ({ id, title, author, isbn, category, total_copies: total, available_copies: avail });
+  S = {
+    seq: 100,
+    users: [
+      { id: 1, full_name: "Head Librarian", username: "admin", email: "", password: "admin123", role: "librarian" },
+      { id: 2, full_name: "Asha Raman", username: "asha", email: "", password: "asha123", role: "student" },
+      { id: 3, full_name: "Karthik S", username: "karthik", email: "", password: "karthik123", role: "member" },
+    ],
+    books: [
+      bk(1, "Wings of Fire", "A. P. J. Abdul Kalam", "LMS-0001", "Biography", 3, 2),
+      bk(2, "The Alchemist", "Paulo Coelho", "LMS-0002", "Fiction", 2, 2),
+      bk(3, "Introduction to Algorithms", "Thomas H. Cormen", "LMS-0003", "Computer Science", 2, 1),
+      bk(4, "Sapiens", "Yuval Noah Harari", "LMS-0004", "History", 1, 0),
+      bk(5, "Clean Code", "Robert C. Martin", "LMS-0005", "Computer Science", 2, 2),
+      bk(6, "Ponniyin Selvan", "Kalki Krishnamurthy", "LMS-0006", "Fiction", 2, 2),
+    ],
+    issues: [
+      { id: 1, book_id: 1, user_id: 2, issue_date: day(-20), due_date: day(-6), return_date: null },
+      { id: 2, book_id: 3, user_id: 3, issue_date: day(-3), due_date: day(11), return_date: null },
+      { id: 3, book_id: 4, user_id: 2, issue_date: day(-2), due_date: day(12), return_date: null },
+    ],
+  };
+}
+try { if (!sess && !sessionStorage.getItem("lms-out")) sess = { id: 1, name: "Head Librarian", role: "librarian" }; } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+const setSess = s => { sess = s; try { sessionStorage.setItem("lms-sess", JSON.stringify(s)); if (s) sessionStorage.removeItem("lms-out"); else sessionStorage.setItem("lms-out", "1"); } catch (e) {} return s; };
+
+async function api(url, method = "GET", b) {
+  b = b || {};
+  const [path, qs] = url.split("?");
+  const q = (new URLSearchParams(qs || "").get("q") || "").toLowerCase();
+  const fail = m => { throw new Error(m); };
+  const copy = x => JSON.parse(JSON.stringify(x));
+  const r = method + " " + path;
+  if (r === "POST /api/login") {
+    const u = S.users.find(u => u.username === (b.username || "").trim() && u.role === b.role && u.password === b.password);
+    if (!u) fail("Wrong username, password or user type.");
+    return setSess({ id: u.id, name: u.full_name, role: u.role });
+  }
+  if (r === "POST /api/logout") { setSess(null); return { ok: true }; }
+  if (!sess) fail("Please log in.");
+  if (r === "GET /api/me") return sess;
+  if (sess.role !== "librarian" && /^(POST \/api\/(books|users|issue|return)|GET \/api\/users)$/.test(r)) fail("Only librarians can do this.");
+  const today = day(0);
+  const active = () => S.issues.filter(i => !i.return_date);
+  switch (r) {
+    case "GET /api/stats":
+      return {
+        titles: S.books.length,
+        available: S.books.reduce((n, x) => n + x.available_copies, 0),
+        issued: active().length,
+        overdue: active().filter(i => i.due_date < today).length,
+        members: S.users.filter(u => u.role !== "librarian").length,
+      };
+    case "GET /api/books":
+      return copy(S.books.filter(x => [x.title, x.author, x.isbn, x.category].some(v => (v || "").toLowerCase().includes(q)))
+        .sort((a, c) => a.title.localeCompare(c.title)));
+    case "POST /api/books": {
+      const isbn = (b.isbn || "").trim(), n = parseInt(b.copies) || 1;
+      if (isbn && S.books.some(x => x.isbn === isbn)) fail("A book with this ISBN already exists.");
+      S.books.push({ id: ++S.seq, title: b.title.trim(), author: b.author.trim(), isbn, category: (b.category || "").trim(), total_copies: n, available_copies: n });
+      save(); return { ok: true };
+    }
+    case "GET /api/users":
+      return S.users.map(u => ({ id: u.id, full_name: u.full_name, username: u.username, role: u.role }));
+    case "POST /api/users":
+      if (!["student", "member", "librarian"].includes(b.role)) fail("Choose a valid user type.");
+      if (S.users.some(u => u.username === b.username.trim())) fail("That username is already taken.");
+      S.users.push({ id: ++S.seq, full_name: b.full_name.trim(), username: b.username.trim(), email: b.email || "", password: b.password, role: b.role });
+      save(); return { ok: true };
+    case "GET /api/issues":
+      return active().filter(i => sess.role === "librarian" || i.user_id === sess.id)
+        .map(i => ({ id: i.id, title: S.books.find(x => x.id === i.book_id).title, full_name: S.users.find(u => u.id === i.user_id).full_name,
+                     issue_date: i.issue_date, due_date: i.due_date, overdue: i.due_date < today }))
+        .sort((a, c) => a.due_date.localeCompare(c.due_date));
+    case "POST /api/issue": {
+      const bookRow = S.books.find(x => x.id == b.book_id);
+      if (!bookRow || bookRow.available_copies < 1) fail("No copies of this book are available.");
+      bookRow.available_copies--;
+      S.issues.push({ id: ++S.seq, book_id: bookRow.id, user_id: +b.user_id, issue_date: today, due_date: day(parseInt(b.days) || 14), return_date: null });
+      save(); return { ok: true };
+    }
+    case "POST /api/return": {
+      const i = S.issues.find(x => x.id == b.issue_id && !x.return_date);
+      if (!i) fail("This book was already returned.");
+      i.return_date = today;
+      S.books.find(x => x.id === i.book_id).available_copies++;
+      save(); return { ok: true };
+    }
+  }
+  fail("Not found.");
+}
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let me = null;
+
+
+function note(text, bad) {
+  $("#msg").innerHTML = text ? `<div class="note ${bad ? "bad" : "ok"}">${esc(text)}</div>` : "";
+}
+
+const L = ["librarian"], ALL = ["librarian", "student", "member"];
+const pages = {
+  dashboard: { label: "Dashboard", roles: ALL, render: dashboard },
+  "add-book": { label: "Add book", roles: L, render: addBook },
+  books: { label: "Search books", roles: ALL, render: books },
+  "add-user": { label: "Add student / user", roles: L, render: addUser },
+  issue: { label: "Issue book", roles: L, render: issue },
+  "return": { label: "Return book", roles: L, render: returnBook },
+  status: { label: "Book availability", roles: ALL, render: status },
+};
+
+function show(key) {
+  note("");
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.k === key));
+  $("#title").textContent = pages[key].label;
+  $("#page").innerHTML = "";
+  $("#page").onclick = null;
+  pages[key].render().catch(e => note(e.message, true));
+}
+
+function start(user) {
+  me = user;
+  $("#login-view").classList.add("hidden");
+  $("#app-view").classList.remove("hidden");
+  $("#who").textContent = `${user.name} (${user.role})`;
+  $("#nav").innerHTML = Object.entries(pages).filter(([, p]) => p.roles.includes(user.role))
+    .map(([k, p]) => `<button data-k="${k}">${p.label}</button>`).join("");
+  show("dashboard");
+}
+
+$("#nav").onclick = e => e.target.dataset.k && show(e.target.dataset.k);
+
+$("#login-form").onsubmit = async e => {
+  e.preventDefault();
+  $("#login-error").textContent = "";
+  try { start(await api("/api/login", "POST", Object.fromEntries(new FormData(e.target)))); }
+  catch (err) { $("#login-error").textContent = err.message; }
+};
+
+$("#logout").onclick = async () => { await api("/api/logout", "POST"); location.reload(); };
+
+api("/api/me").then(start).catch(() => {});
+
+function form(fields, label, onSubmit) {
+  $("#page").innerHTML = `<form class="card" id="f">${fields.map(f =>
+    `<label>${f.label}${f.html || `<input name="${f.name}" type="${f.type || "text"}" ${f.optional ? "" : "required"} ${f.attr || ""}>`}</label>`).join("")}<button>${label}</button></form>`;
+  $("#f").onsubmit = async e => {
+    e.preventDefault();
+    try { await onSubmit(Object.fromEntries(new FormData(e.target))); } catch (err) { note(err.message, true); }
+  };
+}
+
+function loanTable(rows, withReturn) {
+  if (!rows.length) return `<p class="empty">No books are issued right now.</p>`;
+  return `<div class="table-wrap"><table><tr><th>Book</th><th>Borrower</th><th>Issued</th><th>Due</th>${withReturn ? "<th></th>" : ""}</tr>${rows.map(r =>
+    `<tr><td>${esc(r.title)}</td><td>${esc(r.full_name)}</td><td>${r.issue_date}</td><td>${r.due_date} ${r.overdue ? '<span class="tag bad">Overdue</span>' : ""}</td>${withReturn ? `<td><button class="small" data-return="${r.id}">Return</button></td>` : ""}</tr>`).join("")}</table></div>`;
+}
+
+function bookTable(rows) {
+  if (!rows.length) return `<p class="empty">No books match.</p>`;
+  return `<div class="table-wrap"><table><tr><th>Title</th><th>Author</th><th>ISBN</th><th>Category</th><th>Copies</th><th>Status</th></tr>${rows.map(b =>
+    `<tr><td>${esc(b.title)}</td><td>${esc(b.author)}</td><td>${esc(b.isbn)}</td><td>${esc(b.category)}</td><td>${b.available_copies} of ${b.total_copies}</td><td><span class="tag ${b.available_copies ? "" : "bad"}">${b.available_copies ? "Available" : "All issued"}</span></td></tr>`).join("")}</table></div>`;
+}
+
+async function dashboard() {
+  const [s, loans] = await Promise.all([api("/api/stats"), api("/api/issues")]);
+  const tiles = [["Book titles", s.titles], ["Copies available", s.available], ["Books issued", s.issued], ["Overdue", s.overdue], ["Members", s.members]];
+  $("#page").innerHTML = `<div class="tiles">${tiles.map(([l, v]) =>
+    `<div class="tile ${l === "Overdue" && v > 0 ? "warn" : ""}"><b>${v}</b><span>${l}</span></div>`).join("")}</div>
+    <h3>${me.role === "librarian" ? "Books currently issued" : "Your books"}</h3>${loanTable(loans)}`;
+}
+
+async function addBook() {
+  form([
+    { label: "Title", name: "title" },
+    { label: "Author", name: "author" },
+    { label: "ISBN", name: "isbn", optional: true },
+    { label: "Category", name: "category", optional: true },
+    { label: "Number of copies", name: "copies", type: "number", attr: 'value="1" min="1"' },
+  ], "Add book", async d => { await api("/api/books", "POST", d); note("Book added."); $("#f").reset(); });
+}
+
+async function books() {
+  $("#page").innerHTML = `<input id="q" class="search" placeholder="Search by title, author, ISBN or category"><div id="res"></div>`;
+  const load = async () => { $("#res").innerHTML = bookTable(await api("/api/books?q=" + encodeURIComponent($("#q").value))); };
+  $("#q").oninput = () => load().catch(e => note(e.message, true));
+  await load();
+}
+
+async function addUser() {
+  form([
+    { label: "Full name", name: "full_name" },
+    { label: "Username", name: "username" },
+    { label: "Email", name: "email", type: "email", optional: true },
+    { label: "Password", name: "password", type: "password", attr: 'minlength="6"' },
+    { label: "User type", html: `<select name="role"><option value="student">Student</option><option value="member">Member</option><option value="librarian">Librarian</option></select>` },
+  ], "Add user", async d => { await api("/api/users", "POST", d); note("User added."); $("#f").reset(); });
+}
+
+async function issue() {
+  const [bk, us] = await Promise.all([api("/api/books?q="), api("/api/users")]);
+  const avail = bk.filter(b => b.available_copies > 0);
+  const people = us.filter(u => u.role !== "librarian");
+  if (!avail.length || !people.length) {
+    $("#page").innerHTML = `<p class="empty">${!avail.length ? "No copies are available to issue." : "Add a student or member first."}</p>`;
+    return;
+  }
+  form([
+    { label: "Book", html: `<select name="book_id">${avail.map(b => `<option value="${b.id}">${esc(b.title)} (${b.available_copies} left)</option>`).join("")}</select>` },
+    { label: "Borrower", html: `<select name="user_id">${people.map(u => `<option value="${u.id}">${esc(u.full_name)} (${esc(u.username)})</option>`).join("")}</select>` },
+    { label: "Loan period (days)", name: "days", type: "number", attr: 'value="14" min="1" max="90"' },
+  ], "Issue book", async d => { await api("/api/issue", "POST", d); await issue(); note("Book issued."); });
+}
+
+async function returnBook() {
+  const rows = await api("/api/issues");
+  $("#page").innerHTML = loanTable(rows, true);
+  $("#page").onclick = async e => {
+    const id = e.target.dataset.return;
+    if (!id) return;
+    try { await api("/api/return", "POST", { issue_id: id }); await returnBook(); note("Book returned."); }
+    catch (err) { note(err.message, true); }
+  };
+}
+
+async function status() {
+  $("#page").innerHTML = `<label style="max-width:240px">Show<select id="flt"><option value="all">All books</option><option value="in">Available</option><option value="out">All issued</option></select></label><div id="res"></div>`;
+  const rows = await api("/api/books?q=");
+  const draw = () => {
+    const f = $("#flt").value;
+    $("#res").innerHTML = bookTable(rows.filter(b => f === "all" || (f === "in") === b.available_copies > 0));
+  };
+  $("#flt").onchange = draw;
+  draw();
+}
+</script>
+</body>
+</html>
